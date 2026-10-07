@@ -7,6 +7,8 @@ Full-stack JavaScript app for tracking job applications with auth, protected rou
 - Backend: Node.js + Express + SQLite (better-sqlite3) + JWT auth
 
 ## Run
+Create `server/.env` with at least `JWT_SECRET=<any long random string>` first: the server refuses to start without it (`server/src/server.js:8-10`). This snapshot ships no `.env.example`.
+
 ```bash
 npm install
 npm run install:all
@@ -36,3 +38,7 @@ npm run dev
 - `PUT /api/applications/:id`
 - `PATCH /api/applications/:id/transition`
 - `DELETE /api/applications/:id`
+
+## About this snapshot
+
+This repository is a snapshot of [elirc/job-track](https://github.com/elirc/job-track) from before its upskilling courses and fixes were added. There are no automated tests yet. `job-tracker-next/` has the same server and client source as the root app here. `ARCHITECTURE_DEEP_DIVE.md` section 8 lists the known gaps.

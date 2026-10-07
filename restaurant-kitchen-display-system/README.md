@@ -10,7 +10,7 @@ Real-time kitchen operations app with multi-channel intake, station routing, ite
 - Priority bumping: `normal`, `high`, `rush`
 - Mid-service 86 handling:
   - manual per item
-  - global menu-item 86 that auto-updates active queued/cooking items
+  - global menu-item 86 that auto-updates active queued/started/cooking items
 - Timing targets + late alerts (`due_at`, `is_late`)
 - WebSocket live updates via Socket.IO
 
@@ -29,6 +29,7 @@ npm run dev
 - API: `http://localhost:4300`
 
 ## Key API endpoints
+- `GET /api/health` (defined in `server/src/server.js`; the rest are in `server/src/routes/api.js`)
 - `GET /api/menu-items`
 - `PATCH /api/menu-items/:menuItemId/availability`
 - `POST /api/orders`
@@ -41,9 +42,10 @@ npm run dev
 - `GET /api/alerts/late`
 
 ## Realtime event channel
-Server emits `kds_event` payloads when:
-- orders/items/menu change
-- late alert set changes
+Server emits a single `kds_event` channel whose `type` is one of:
+- `order_created`, `order_updated`, `item_updated`, `menu_item_updated` (after a mutation, `server/src/routes/api.js`)
+- `late_alerts_changed` (late-alert poll, `server/src/server.js`)
+- `connected` (sent to each new socket, `server/src/server.js`)
 
 ## Notes
 - Seed menu items are inserted automatically on first boot.

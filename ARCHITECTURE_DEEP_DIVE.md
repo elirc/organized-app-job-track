@@ -191,7 +191,18 @@ Example: moving `applied -> interview`
 - Auth token is always server-verified (`/auth/me`) during hydrate.
 - All app rows are user-scoped in SQL.
 - Workflow enforcement is backend-only source of truth.
-- Query param validation limits invalid sorting/filtering fields.
+- Query param validation limits invalid sorting/filtering fields. `sort_by` is interpolated into SQL (`server/src/routes/applications.js:51`), which is safe only because `querySchema` restricts it to a fixed enum (`server/src/validation.js:68`). Keep that enum if you touch the query.
+
+### Known gaps (verified against the source)
+
+These were checked against the code in this snapshot on 2026-10-06. The maintained repository, [elirc/job-track](https://github.com/elirc/job-track), has since fixed the server-side causes of the first three in its root app.
+
+- **No optional field can be cleared.** The server turns `""` into `undefined` for every optional field (`server/src/validation.js:24,32,38,40-41,45`), and the update merge keeps the old value whenever a field is `undefined` (`server/src/routes/applications.js:144-151`). The client's `toPayload` also turns every blank optional field into `undefined` (`client/src/components/ApplicationFormModal.jsx:71-85`). So a location, URL, salary, next-step date or note, once saved, can be changed but never removed, through the UI or the API. The `|| null` branches in the merge never see an empty string.
+- **A blank salary sent to the API is stored as `0`.** `z.coerce.number()` runs before the `z.literal('')` branch (`server/src/validation.js:40-41`), and `Number("")` is `0`. The UI avoids this only because it never sends blank salaries.
+- **Dates are checked for shape only.** The regex at `server/src/validation.js:21,42` accepts `2026-02-30`.
+- **Duplicate registration can crash the server.** `/register` checks for the email (`server/src/routes/auth.js:18`), then `await`s bcrypt (line 24), then inserts (lines 26-28). Two simultaneous sign-ups with the same email can both pass the check; the second insert hits the `UNIQUE` constraint (`server/src/db.js:20`) and throws inside an `async` handler. Express 4 (`server/package.json`: `^4.21.2`) does not forward a rejected promise to the error handler at `server/src/server.js:39-42`, so it becomes an unhandled rejection, which ends the process by default on Node 22. A fix is try/catch around the insert, returning 409.
+- **Login timing differs by account existence.** The messages match (`server/src/routes/auth.js:57,62`), but a missing email returns before `bcrypt.compare` runs (line 60). Response time can therefore reveal which emails are registered.
+- **The transition table exists twice.** `client/src/utils/status.js` `TRANSITIONS` copies `server/src/constants.js` `ALLOWED_TRANSITIONS`. They match today; nothing enforces that.
 
 ## 9. Common Mistakes to Avoid
 
@@ -205,7 +216,7 @@ Example: moving `applied -> interview`
 - refresh tokens and rotating JWT secrets
 - per-field audit history (status changed by/date)
 - stronger pagination (cursor-based)
-- test suite (API + component tests)
+- test suite (API + component tests); this snapshot has no automated tests and no `test` script
 - role-based collaboration (team view)
 
 ## 11. File Map to Study
@@ -218,6 +229,8 @@ Backend:
 - `server/src/routes/applications.js`
 - `server/src/routes/dashboard.js`
 - `server/src/validation.js`
+- `server/src/constants.js` (statuses and `ALLOWED_TRANSITIONS`)
+- `server/src/utils.js` (`parseOrRespond`)
 
 Frontend:
 - `client/src/App.jsx`
@@ -226,3 +239,5 @@ Frontend:
 - `client/src/pages/ApplicationsPage.jsx`
 - `client/src/components/ApplicationFormModal.jsx`
 - `client/src/pages/DashboardPage.jsx`
+
+`client/src/main.ts`, `client/src/counter.ts` and `client/src/style.css` are leftovers from the Vite TypeScript template. `client/index.html` loads `/src/main.jsx`, so they never run.

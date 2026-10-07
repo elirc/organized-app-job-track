@@ -25,6 +25,8 @@ npm run dev
 4. Filter/search/sort in Applications.
 5. View stats and recent updates in Dashboard.
 
+Create `server/.env` with a `JWT_SECRET` before `npm run dev`; the server throws at startup without it (`server/src/server.js:8-10`). This copy has no automated tests. In this snapshot its source matches the root app; see section 0 of `ARCHITECTURE_DEEP_DIVE.md` for the known gaps they share.
+
 ## API endpoints
 - `POST /api/auth/register`
 - `POST /api/auth/login`

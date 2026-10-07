@@ -20,7 +20,7 @@ Provide a realistic async-processing app (bulk email sender) with:
   - enqueues jobs in Redis via BullMQ
   - exposes dashboard APIs and Bull Board
 - Worker (`server/src/worker.js`, `server/src/workers/emailWorker.js`)
-  - consumes queue jobs
+  - consumes `email-jobs` (the only BullMQ `Worker`, `emailWorker.js:28`); nothing consumes `dead-letter-jobs`, which is an inspection queue for Bull Board
   - executes processing logic
   - updates job status in SQLite
   - moves terminal failures into dead-letter queue/table
@@ -60,14 +60,16 @@ Queues (`server/src/queues/index.js`):
 - `email-jobs`
 - `dead-letter-jobs`
 
-Default options on email queue:
+Default options on email queue (`server/src/queues/index.js:12-26`):
 - `attempts: 4`
-- exponential backoff
-- retention policies for completed/failed jobs
+- exponential backoff (2000 ms)
+- retention: completed jobs 1 h / 5000, failed jobs 24 h / 5000
 
 Why defaults at queue level:
 - keeps behavior consistent
 - endpoint handlers can override only when needed
+
+Campaign creation does override some of them: each job gets the campaign's own `attempts` and `backoff` (`server/src/routes/campaigns.js:67-74`). Retention is not overridden, so the queue-level `removeOnComplete`/`removeOnFail` still apply.
 
 ## 5. Campaign Creation Flow
 
@@ -106,7 +108,7 @@ Important BullMQ nuance:
 
 ## 7. Dead Letter Requeue
 
-File: `server/src/routes/dashboard.js`
+File: `server/src/routes/dashboard.js:113-178`
 
 Endpoint: `POST /api/dashboard/dead-letters/:id/requeue`
 
@@ -189,6 +191,11 @@ Campaign with 3 recipients:
 - If Redis is down:
   - dashboard DB reads still work
   - enqueue/worker operations fail as expected
+
+Verified gaps in this snapshot (2026-10-06). The maintained repository, [elirc/job-track](https://github.com/elirc/job-track), later replaced this flow with a SQLite outbox.
+- Tracking rows are written *after* `addBulk` returns (`server/src/routes/campaigns.js:77-87`). The worker updates rows by `queue_job_id` (`server/src/workers/emailWorker.js:11-13`), so a job that starts before its row exists updates nothing and its row can stay `queued`.
+- If `addBulk` succeeds but the row insert fails, the `catch` still deletes the campaign (`server/src/routes/campaigns.js:102-104`), leaving jobs in Redis with no campaign.
+- Requeue is check-then-act. It reads `resolved` (`server/src/routes/dashboard.js:123-125`), awaits the enqueue, then inserts the row and marks the dead letter resolved as separate statements (`:132-172`). Two quick clicks can enqueue the same recipient twice, and a failed enqueue rejects inside an `async` handler that Express 4 does not catch.
 
 ## 13. Common Mistakes to Avoid
 

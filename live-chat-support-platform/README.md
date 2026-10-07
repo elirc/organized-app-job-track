@@ -50,4 +50,8 @@ VITE_SOCKET_URL=http://localhost:4200
 
 ## Socket Events
 - Client -> Server: `join_room`, `send_message`, `typing`, `mark_read`, `watch_as_agent`
-- Server -> Client: `joined_room`, `new_message`, `typing_update`, `read_update`, `room_presence`, `conversation_updated`
+- Server -> Client: `joined_room`, `new_message`, `typing_update`, `read_update`, `room_presence`, `conversation_updated`, plus `server_error` when `join_room` names a missing room
+
+## Checks and boundaries
+
+This snapshot has no automated tests and no `test` script; `npm run build` builds the client. Identity comes from the client and is not authenticated. See "Verified gaps in the current code" in `ARCHITECTURE_DEEP_DIVE.md`.

@@ -2,6 +2,23 @@
 
 This copy lives in `job-tracker-next/` and is intentionally isolated from the original tracker folder.
 
+## 0. How this copy relates to the root app
+
+In this snapshot the copy matches the root app: `diff -rq --strip-trailing-cr job-tracker-next/server server` finds no differences, and the clients differ only by the root's unused Vite template files (`client/src/main.ts`, `counter.ts`, `style.css`, `typescript.svg`, `tsconfig.json`). The maintained repository, [elirc/job-track](https://github.com/elirc/job-track), later fixed its root app and kept this copy as the "before" version. These are the behaviours both copies still have here:
+
+| Behaviour | Here (line references are the same in both copies) | Later fix in the maintained root app |
+|---|---|---|
+| Blank optional field on update | `transform(() => undefined)` (`server/src/validation.js:24,32,38,45`), so `""` means "keep", and a field can never be cleared | `transform(() => null)`, so `""` clears |
+| Blank salary | `z.coerce.number()` runs first (`server/src/validation.js:40-41`); `Number("")` is `0`, so a blank salary is stored as `0` | `z.preprocess` maps `""` to `null` |
+| Dates | shape-only regex (`server/src/validation.js:21,42`); `2026-02-30` is accepted | `realDate` round-trip check |
+| Repeating the current status | 400 `Application is already ...` (`server/src/routes/applications.js:208`) | 200 with the unchanged row |
+| List ordering ties | `ORDER BY ${sort_by} ...` with no `id` tie-breaker (`server/src/routes/applications.js:51`) | `..., id` added |
+| Id parsing | `Number.isInteger(Number(id))` (`server/src/routes/applications.js:68-69`), so `/applications/1e2` reads id 100 | `/^\d+$/` check first |
+| Auth selectors | object-returning selectors (`client/src/components/ProtectedRoute.jsx:5-8`, `client/src/pages/LoginPage.jsx:17`, `client/src/pages/RegisterPage.jsx:23`). Zustand 5 (`client/package.json`: `^5.0.3`) needs stable selector results, and a new object on every call can cause a render loop | one scalar selector per value |
+| Test hooks | `server/src/db.js:5` always uses `server/data`; `server/src/server.js:44` always listens and exports nothing; no `test` script or test folder | `JOB_TRACK_DATA_DIR`, exported `app`, `test/applications.test.js` |
+
+**Check:** `node -e "console.log(Number(''), Number('1e2'), Date.parse('2026-02-30') > 0)"` prints `0 100 true`. Those three values are the root causes of the salary, id and date rows above.
+
 This document explains how the project is built, why each part exists, and how a junior developer could build the same system from zero.
 
 ## 1. What This App Does

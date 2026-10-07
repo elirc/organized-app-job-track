@@ -68,6 +68,7 @@ Why separate `read_receipts` table:
 - `read_update`
 - `room_presence`
 - `conversation_updated`
+- `server_error` (only when `join_room` names a room that does not exist; `server/src/socket.js:62-66`)
 
 Design principle:
 - save to DB first, then broadcast authoritative record
@@ -190,7 +191,7 @@ Key client state buckets:
 ## 11. Common Mistakes to Avoid
 
 - broadcasting unsaved message payloads (can create ghost messages)
-- forgetting room membership validation on send
+- forgetting room membership validation on send (this snapshot makes this mistake: `send_message` checks only that the room exists, `server/src/socket.js:120-124`, then adds the sender as a participant)
 - storing typing indicators in DB (unnecessary churn)
 - not cleaning online presence on disconnect
 - calculating unread counts only client-side from partial cache
@@ -202,6 +203,18 @@ Key client state buckets:
 - message pagination cursors for very large rooms
 - rate limiting and websocket abuse protection
 - horizontal scaling with socket adapter (Redis adapter)
+
+### Verified gaps in the current code
+
+Checked against this snapshot on 2026-10-06. The maintained repository, [elirc/job-track](https://github.com/elirc/job-track), fixed some of these later.
+
+- Identity is whatever the client says. `join_room`, `send_message`, `typing` and `mark_read` all take `userId`, `name` and `role` from the event payload (`server/src/socket.js:56`, `106-111`, `94`, `184`), so any socket can post or mark messages as read as any user.
+- Any session can read any room. Room IDs come back from unauthenticated `GET /api/agent/active-conversations` (`server/src/routes/api.js:118`) and `GET /api/messages/search` (`server/src/routes/api.js:157`); `join_room` then needs only an existing room (`server/src/socket.js:62-66`) and returns its last 50 messages (`server/src/socket.js:90`). `GET /api/rooms/:roomId/messages` (`server/src/routes/api.js:96`) has no check either.
+- The send path is not atomic. The message insert, room timestamp update and sender receipt are three separate statements with no transaction (`server/src/socket.js:138-149`).
+- Presence is per user, not per socket. `removeOnline` deletes every entry for the user (`server/src/socket.js:40-53`), so closing one tab marks a user offline while another tab is still in the room.
+- Uploads are served as active content. Multer keeps the original extension (`server/src/routes/api.js:26`) and `express.static` serves `/uploads` with a type derived from it (`server/src/server.js:23`), so an uploaded `.html` or `.svg` renders as a page on the API origin.
+- Receipt writes grow with room size. Every `mark_read` re-upserts every message in the room created at or before the target (`server/src/socket.js:193-204`), and the upsert overwrites `read_at` (`server/src/socket.js:17-21`), so `read_at` means "last marked", not "first read". The client emits `mark_read` for every incoming message from someone else (`client/src/App.jsx:148-154`), and each resulting `read_update` makes every client in the room refetch messages and rooms (`client/src/App.jsx:183-187`).
+- "Last message" queries order by `created_at` only (`server/src/routes/api.js:131`, `138`; `server/src/lib/chatService.js:53`), so messages with tied timestamps can come back in either order.
 
 ## 13. File Map to Study
 
